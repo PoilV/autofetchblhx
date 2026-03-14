@@ -66,17 +66,12 @@ jobs:
         run: |
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${FILE_NAME}"
 
-          cat > README.md <<EOF
-# BLHX APK Mirror
-
-Latest Version: **${VERSION}**
-
-Download:
-${DOWNLOAD_URL}
-
-Last Update:
-$(date -u +"%Y-%m-%d %H:%M UTC")
-EOF
+          # 使用 printf 避免 YAML 语法问题
+          printf "# BLHX APK Mirror\n\nLatest Version: **%s**\n\nDownload:\n%s\n\nLast Update:\n%s\n" \
+          "$VERSION" \
+          "$DOWNLOAD_URL" \
+          "$(date -u +"%Y-%m-%d %H:%M UTC")" \
+          > README.md
 
       - name: Commit README
         if: steps.check.outputs.exists == 'false'
