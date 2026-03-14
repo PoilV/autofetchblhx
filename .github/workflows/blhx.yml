@@ -1,5 +1,8 @@
 name: Fetch BLHX APK
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
   schedule:
@@ -10,8 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Download config
         run: |
@@ -23,26 +25,39 @@ jobs:
           echo "APK_URL=$APK_URL" >> $GITHUB_ENV
           echo "APK_URL=$APK_URL"
 
-      - name: Get filename
+      - name: Extract version
         run: |
           FILE_NAME=$(basename "$APK_URL")
+          VERSION=$(echo "$FILE_NAME" | cut -d '_' -f2)
           echo "FILE_NAME=$FILE_NAME" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Check existing release
+        id: check
+        run: |
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Stop if exists
+        if: steps.check.outputs.exists == 'true'
+        run: echo "Release exists, skip."
 
       - name: Download APK
+        if: steps.check.outputs.exists == 'false'
         run: |
           curl -L "$APK_URL" -o "$FILE_NAME"
 
-      - name: Create tag
-        id: tag
-        run: |
-          TAG="auto-$(date +%Y%m%d-%H%M)"
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-
       - name: Create Release
+        if: steps.check.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: BLHX ${{ steps.tag.outputs.tag }}
+          tag_name: v${{ env.VERSION }}
+          name: BLHX v${{ env.VERSION }}
           files: ${{ env.FILE_NAME }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
