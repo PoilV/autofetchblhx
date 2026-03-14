@@ -2,11 +2,16 @@ name: Fetch BLHX APK
 
 permissions:
   contents: write
+  releases: write
 
 on:
   workflow_dispatch:
   schedule:
     - cron: "0 */12 * * *"
+
+env:
+  GIT_USER_NAME: github-actions
+  GIT_USER_EMAIL: actions@github.com
 
 jobs:
   fetch:
@@ -17,17 +22,32 @@ jobs:
 
       - name: Download config
         run: |
-          curl -L https://static.biligame.com/config/blhx.config.js -o config.js
+          curl -L --max-time 30 --retry 3 --retry-delay 5 \
+            https://static.biligame.com/config/blhx.config.js -o config.js
+          
+          if [ ! -f config.js ] || [ ! -s config.js ]; then
+            echo "Failed to download config.js"
+            exit 1
+          fi
 
       - name: Extract APK URL
         run: |
           APK_URL=$(grep -oP 'https://[^"]+\.apk' config.js | head -n1)
+          if [ -z "$APK_URL" ]; then
+            echo "::error::Failed to extract APK URL from config.js"
+            exit 1
+          fi
           echo "APK_URL=$APK_URL" >> $GITHUB_ENV
 
       - name: Extract version
         run: |
           FILE_NAME=$(basename "$APK_URL")
-          VERSION=$(echo "$FILE_NAME" | cut -d '_' -f2)
+          # 尝试提取语义化版本号
+          VERSION=$(echo "$FILE_NAME" | grep -oP '\d+\.\d+\.\d+' | head -n1)
+          if [ -z "$VERSION" ]; then
+            echo "::error::Failed to extract version from $FILE_NAME"
+            exit 1
+          fi
           echo "FILE_NAME=$FILE_NAME" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
@@ -42,14 +62,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Stop if exists
-        if: steps.check.outputs.exists == 'true'
-        run: echo "Release exists, skip."
-
       - name: Download APK
         if: steps.check.outputs.exists == 'false'
         run: |
-          curl -L "$APK_URL" -o "$FILE_NAME"
+          curl -L --max-time 300 --retry 3 --retry-delay 10 \
+            "$APK_URL" -o "$FILE_NAME"
+          
+          if [ ! -f "$FILE_NAME" ] || [ ! -s "$FILE_NAME" ]; then
+            echo "::error::Failed to download APK"
+            exit 1
+          fi
 
       - name: Create Release
         if: steps.check.outputs.exists == 'false'
@@ -58,6 +80,8 @@ jobs:
           tag_name: v${{ env.VERSION }}
           name: BLHX v${{ env.VERSION }}
           files: ${{ env.FILE_NAME }}
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -65,19 +89,24 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         run: |
           DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${FILE_NAME}"
+          
+          cat > README.md << 'EOF'
+          # BLHX APK Mirror
+          
+          Latest Version: **${{ env.VERSION }}**
+          
+          Download: [${{ env.FILE_NAME }}](${{ env.DOWNLOAD_URL }})
+          
+          Last Update: $(date -u +"%Y-%m-%d %H:%M UTC")
+          EOF
 
-          # 使用 printf 避免 YAML 语法问题
-          printf "# BLHX APK Mirror\n\nLatest Version: **%s**\n\nDownload:\n%s\n\nLast Update:\n%s\n" \
-          "$VERSION" \
-          "$DOWNLOAD_URL" \
-          "$(date -u +"%Y-%m-%d %H:%M UTC")" \
-          > README.md
-
-      - name: Commit README
+      - name: Commit and Push
         if: steps.check.outputs.exists == 'false'
         run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "actions@github.com"
+          git config --global user.name "$GIT_USER_NAME"
+          git config --global user.email "$GIT_USER_EMAIL"
           git add README.md
           git commit -m "Update README for v${VERSION}" || exit 0
-          git push
+          git push origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
