@@ -93,10 +93,6 @@ jobs:
           # BLHX APK Mirror
           
           Latest Version: **${{ env.VERSION }}**
-          
-          Download: [${{ env.FILE_NAME }}](${{ env.DOWNLOAD_URL }})
-          
-          Last Update: $(date -u +"%Y-%m-%d %H:%M UTC")
           EOF
 
       - name: Commit and Push
