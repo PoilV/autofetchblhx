@@ -23,7 +23,6 @@ jobs:
         run: |
           APK_URL=$(grep -oP 'https://[^"]+\.apk' config.js | head -n1)
           echo "APK_URL=$APK_URL" >> $GITHUB_ENV
-          echo "APK_URL=$APK_URL"
 
       - name: Extract version
         run: |
@@ -61,3 +60,29 @@ jobs:
           files: ${{ env.FILE_NAME }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update README
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${FILE_NAME}"
+
+          cat > README.md <<EOF
+# BLHX APK Mirror
+
+Latest Version: **${VERSION}**
+
+Download:
+${DOWNLOAD_URL}
+
+Last Update:
+$(date -u +"%Y-%m-%d %H:%M UTC")
+EOF
+
+      - name: Commit README
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "actions@github.com"
+          git add README.md
+          git commit -m "Update README for v${VERSION}" || exit 0
+          git push
