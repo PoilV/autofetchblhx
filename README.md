@@ -1,3 +1,3 @@
 # BLHX APK Mirror
 
-Latest Version: **9.6.12**
+Latest Version: **9.7.10**
